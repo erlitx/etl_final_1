@@ -20,7 +20,7 @@ x-airflow-common: &x-airflow-common
 services:
   postgres:
     container_name: postgres
-    build: .db/postgres
+    build: ./migrate
     restart: always
     env_file:
       - .env
@@ -36,26 +36,38 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
 
-mongo:
-  image: mongo:6  
-  container_name: mongo
-  restart: always
-  env_file:
-    - .env
-  healthcheck:
-    test: ["CMD", "mongosh", "--eval", "db.runCommand('ping').ok"]
-    interval: 10s
-    retries: 5
-  environment:
-    MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
-    MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-    MONGO_INITDB_DATABASE: ${MONGO_DB}
-    MONGO_DB: ${MONGO_DB}
-    MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/
-  ports:
-    - "27017:27017"
-  volumes:
-    - mongo_data:/data/db
+  mongo:
+    image: mongo:6  
+    container_name: mongo
+    restart: always
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand('ping').ok"]
+      interval: 10s
+      retries: 5
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DB}
+      MONGO_DB: ${MONGO_DB}
+      MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  alembic:
+    build: .  # Uses the Dockerfile in the migrations folder
+    container_name: alembic_migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    volumes:
+      - ./migrations:/app/migrations  # Mount migrations folder
+    command: ["alembic", "upgrade", "head"]  # Runs migrations on startup
 
 
   data_seeder:
@@ -84,7 +96,7 @@ mongo:
     env_file:
       - .env
     environment:
-      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRESQL_APP_USER}:${POSTGRESQL_APP_PASSWORD}@${POSTGRES_HOST}:${POSTGRESQL_APP_PORT}/${POSTGRESQL_APP_DB}
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRESQL_APP_USER}:${POSTGRESQL_APP_PASSWORD}@postgres:5432/${POSTGRESQL_APP_DB}
     entrypoint:
       - "/bin/bash"
       - "-c"
